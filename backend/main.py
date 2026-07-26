@@ -40,6 +40,14 @@ class AnalyzeResponse(BaseModel):
     text: str
     layers: list[LayerResult]
 
+class NeuronResult(BaseModel):
+    neuron: int
+    l2: float
+
+class NeuronResponse(BaseModel):
+    layer: int
+    neurons: list[NeuronResult]
+
 def get_activations(model, input_ids):
     activations = {}
 
@@ -87,3 +95,26 @@ def analyze(request: AnalyzeRequest):
         layers.append(LayerResult(layer=i, l2=round(l2, 4), cosine=round(cosine, 4)))
 
     return AnalyzeResponse(text=request.text, layers=layers)
+
+@app.post("/neurons/{layer_idx}", response_model=NeuronResponse)
+def get_neurons(layer_idx: int, request: AnalyzeRequest):
+    input_ids = tokenizer.encode(request.text, return_tensors="pt")
+
+    acts_a = get_activations(model_a, input_ids)
+    acts_b = get_activations(model_b, input_ids)
+
+    a = acts_a[layer_idx].squeeze(0)
+    b = acts_b[layer_idx].squeeze(0)
+
+    min_neurons = min(a.shape[1], b.shape[1])
+    a = a[:, :min_neurons]
+    b = b[:, :min_neurons]
+
+    per_neuron_l2 = torch.sqrt(((a - b) ** 2).mean(dim=0))
+
+    neurons = [
+        NeuronResult(neuron=i, l2=round(per_neuron_l2[i].item(), 4))
+        for i in range(min_neurons)
+    ]
+
+    return NeuronResponse(layer=layer_idx, neurons=neurons)

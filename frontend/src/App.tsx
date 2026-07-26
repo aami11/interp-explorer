@@ -7,10 +7,13 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [metric, setMetric] = useState("l2")
   const [selectedLayer, setSelectedLayer] = useState(null)
+  const [neurons, setNeurons] = useState([])
+  const [neuronLoading, setNeuronLoading] = useState(false)
 
   const analyze = async () => {
     setLoading(true)
     setSelectedLayer(null)
+    setNeurons([])
     const res = await fetch("http://localhost:8000/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -21,6 +24,19 @@ function App() {
     setLoading(false)
   }
 
+  const selectLayer = async (layerIdx: number) => {
+    setSelectedLayer(layerIdx)
+    setNeuronLoading(true)
+    const res = await fetch(`http://localhost:8000/neurons/${layerIdx}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: inputText })
+    })
+    const data = await res.json()
+    setNeurons(data.neurons)
+    setNeuronLoading(false)
+  }
+
   const getBarColor = (value: number) => {
     const intensity = Math.min(Math.abs(value) / 1.5, 1)
     return `rgb(${Math.round(59 + intensity * 150)}, ${Math.round(130 - intensity * 80)}, ${Math.round(246 - intensity * 150)})`
@@ -29,11 +45,16 @@ function App() {
   const getHeatColor = (value: number, metric: string) => {
     if (metric === "l2") {
       const intensity = Math.min(value / 1.5, 1)
-      return `rgb(${Math.round(255 * intensity)}, ${Math.round(255 * (1 - intensity * 0.7))}, ${Math.round(255 * (1 - intensity))})` 
+      return `rgb(${Math.round(255 * intensity)}, ${Math.round(255 * (1 - intensity * 0.7))}, ${Math.round(255 * (1 - intensity))})`
     } else {
       const normalized = (value + 1) / 2
       return `rgb(${Math.round(255 * (1 - normalized))}, ${Math.round(255 * normalized * 0.8)}, ${Math.round(255 * (1 - normalized * 0.5))})`
     }
+  }
+
+  const getNeuronColor = (value: number) => {
+    const intensity = Math.min(value / 0.3, 1)
+    return `rgb(${Math.round(234 * intensity + 147 * (1 - intensity))}, ${Math.round(88 * intensity + 197 * (1 - intensity))}, ${Math.round(12 * intensity + 253 * (1 - intensity))})`
   }
 
   return (
@@ -62,7 +83,6 @@ function App() {
 
       {layers.length > 0 && (
         <>
-          {/* Heatmap Grid */}
           <h2 style={{ fontSize: 18, marginBottom: 8 }}>Activation Heatmap</h2>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 24 }}>
             <thead>
@@ -76,25 +96,21 @@ function App() {
               {layers.map((entry) => (
                 <tr
                   key={entry.layer}
-                  onClick={() => setSelectedLayer(entry.layer)}
+                  onClick={() => selectLayer(entry.layer)}
                   style={{ cursor: "pointer", outline: selectedLayer === entry.layer ? "2px solid #3b82f6" : "none" }}
                 >
                   <td style={{ padding: 8, fontWeight: 500 }}>Layer {entry.layer}</td>
                   <td style={{
-                    padding: 8,
-                    textAlign: "center",
+                    padding: 8, textAlign: "center",
                     background: getHeatColor(entry.l2, "l2"),
-                    color: "black",
-                    borderRadius: 4
+                    borderRadius: 4, color: "black", fontWeight: 600
                   }}>
                     {entry.l2}
                   </td>
                   <td style={{
-                    padding: 8,
-                    textAlign: "center",
+                    padding: 8, textAlign: "center",
                     background: getHeatColor(entry.cosine, "cosine"),
-                    color: "black",
-                    borderRadius: 4
+                    borderRadius: 4, color: "black", fontWeight: 600
                   }}>
                     {entry.cosine}
                   </td>
@@ -103,7 +119,6 @@ function App() {
             </tbody>
           </table>
 
-          {/* Bar Chart */}
           <h2 style={{ fontSize: 18, marginBottom: 8 }}>Layer Comparison</h2>
           <div style={{ marginBottom: 12 }}>
             <button
@@ -133,7 +148,7 @@ function App() {
               <XAxis dataKey="layer" label={{ value: "Layer", position: "insideBottom", offset: -2 }} />
               <YAxis label={{ value: metric === "l2" ? "L2 Distance" : "Cosine Similarity", angle: -90, position: "insideLeft" }} />
               <Tooltip />
-              <Bar dataKey={metric} onClick={(data) => setSelectedLayer(data.layer)}>
+              <Bar dataKey={metric} onClick={(data) => selectLayer(data.layer)}>
                 {layers.map((entry, index) => (
                   <Cell
                     key={index}
@@ -145,12 +160,30 @@ function App() {
             </BarChart>
           </ResponsiveContainer>
 
-          {/* Detail Panel */}
+          {/* Neuron Drill-Down */}
           {selectedLayer !== null && (
-            <div style={{ marginTop: 16, padding: 16, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
-              <h3 style={{ marginTop: 0 }}>Layer {selectedLayer} Details</h3>
-              <p>L2 Distance: <strong>{layers[selectedLayer]?.l2}</strong></p>
-              <p>Cosine Similarity: <strong>{layers[selectedLayer]?.cosine}</strong></p>
+            <div style={{ marginTop: 24, padding: 16, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
+              <h3 style={{ marginTop: 0 }}>Layer {selectedLayer} — Neuron Breakdown</h3>
+              <p style={{ color: "#666", fontSize: 14 }}>
+                L2: <strong>{layers[selectedLayer]?.l2}</strong> | Cosine: <strong>{layers[selectedLayer]?.cosine}</strong>
+              </p>
+
+              {neuronLoading && <p>Loading neurons...</p>}
+
+              {neurons.length > 0 && (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={neurons}>
+                    <XAxis dataKey="neuron" label={{ value: "Neuron", position: "insideBottom", offset: -2 }} />
+                    <YAxis label={{ value: "L2 Distance", angle: -90, position: "insideLeft" }} />
+                    <Tooltip />
+                    <Bar dataKey="l2">
+                      {neurons.map((entry, index) => (
+                        <Cell key={index} fill={getNeuronColor(entry.l2)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           )}
         </>
