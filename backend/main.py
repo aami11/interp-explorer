@@ -35,6 +35,7 @@ class LayerResult(BaseModel):
     layer: int
     l2: float
     cosine: float
+    cka: float
 
 class AnalyzeResponse(BaseModel):
     text: str
@@ -47,6 +48,19 @@ class NeuronResult(BaseModel):
 class NeuronResponse(BaseModel):
     layer: int
     neurons: list[NeuronResult]
+
+def compute_cka(a, b):
+    # a and b are (tokens, neurons) matrices
+    a = a - a.mean(dim=0)
+    b = b - b.mean(dim=0)
+    
+    hsic_ab = torch.norm(a.T @ b) ** 2
+    hsic_aa = torch.norm(a.T @ a) ** 2
+    hsic_bb = torch.norm(b.T @ b) ** 2
+    
+    if hsic_aa * hsic_bb == 0:
+        return 0.0
+    return (hsic_ab / torch.sqrt(hsic_aa * hsic_bb)).item()
 
 def get_activations(model, input_ids):
     activations = {}
@@ -81,18 +95,21 @@ def analyze(request: AnalyzeRequest):
 
     layers = []
     for i in range(min(len(acts_a), len(acts_b))):
-        a = acts_a[i].mean(dim=1).flatten()
-        b = acts_b[i].mean(dim=1).flatten()
+        a = acts_a[i].squeeze(0)
+        b = acts_b[i].squeeze(0)
 
-        # Truncate to the smaller size so mismatched models can be compared
-        min_size = min(a.shape[0], b.shape[0])
-        a = a[:min_size]
-        b = b[:min_size]
+        min_neurons = min(a.shape[1], b.shape[1])
+        a = a[:, :min_neurons]
+        b = b[:, :min_neurons]
 
-        l2 = torch.norm(a - b).item()
-        cosine = F.cosine_similarity(a.unsqueeze(0), b.unsqueeze(0)).item()
+        a_mean = a.mean(dim=0).unsqueeze(0)
+        b_mean = b.mean(dim=0).unsqueeze(0)
 
-        layers.append(LayerResult(layer=i, l2=round(l2, 4), cosine=round(cosine, 4)))
+        l2 = torch.norm(a_mean - b_mean).item()
+        cosine = F.cosine_similarity(a_mean, b_mean).item()
+        cka = compute_cka(a, b)
+
+        layers.append(LayerResult(layer=i, l2=round(l2, 4), cosine=round(cosine, 4), cka=round(cka, 4)))
 
     return AnalyzeResponse(text=request.text, layers=layers)
 

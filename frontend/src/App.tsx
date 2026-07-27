@@ -46,9 +46,12 @@ function App() {
     if (metric === "l2") {
       const intensity = Math.min(value / 1.5, 1)
       return `rgb(${Math.round(255 * intensity)}, ${Math.round(255 * (1 - intensity * 0.7))}, ${Math.round(255 * (1 - intensity))})`
-    } else {
+    } else if (metric === "cosine") {
       const normalized = (value + 1) / 2
       return `rgb(${Math.round(255 * (1 - normalized))}, ${Math.round(255 * normalized * 0.8)}, ${Math.round(255 * (1 - normalized * 0.5))})`
+    } else {
+      const intensity = Math.min(value, 1)
+      return `rgb(${Math.round(76 * intensity + 220 * (1 - intensity))}, ${Math.round(175 * intensity + 220 * (1 - intensity))}, ${Math.round(80 * intensity + 220 * (1 - intensity))})`
     }
   }
 
@@ -90,7 +93,8 @@ function App() {
                 <th style={{ padding: 8, textAlign: "left", borderBottom: "2px solid #ddd" }}>Layer</th>
                 <th style={{ padding: 8, textAlign: "center", borderBottom: "2px solid #ddd" }}>L2 Distance</th>
                 <th style={{ padding: 8, textAlign: "center", borderBottom: "2px solid #ddd" }}>Cosine Similarity</th>
-              </tr>
+              <th style={{ padding: 8, textAlign: "center", borderBottom: "2px solid #ddd" }}>CKA</th>
+            </tr>
             </thead>
             <tbody>
               {layers.map((entry) => (
@@ -113,6 +117,13 @@ function App() {
                     borderRadius: 4, color: "black", fontWeight: 600
                   }}>
                     {entry.cosine}
+                  </td>
+                  <td style={{
+                    padding: 8, textAlign: "center",
+                    background: getHeatColor(entry.cka, "cka"),
+                    borderRadius: 4, color: "black", fontWeight: 600
+                  }}>
+                    {entry.cka}
                   </td>
                 </tr>
               ))}
@@ -141,12 +152,25 @@ function App() {
             >
               Cosine Similarity
             </button>
+            <button
+              onClick={() => setMetric("cka")}
+              style={{
+                padding: "6px 14px", marginLeft: 8, borderRadius: 4, border: "1px solid #ccc",
+                background: metric === "cka" ? "#3b82f6" : "white",
+                color: metric === "cka" ? "white" : "black", cursor: "pointer"
+              }}
+            >
+              CKA
+            </button>
           </div>
 
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={layers}>
+            <BarChart data={layers} margin={{ left: 20 }}>
               <XAxis dataKey="layer" label={{ value: "Layer", position: "insideBottom", offset: -2 }} />
-              <YAxis label={{ value: metric === "l2" ? "L2 Distance" : "Cosine Similarity", angle: -90, position: "insideLeft" }} />
+              <YAxis
+                domain={metric === "l2" ? [0, "auto"] : metric === "cosine" ? ["auto", "auto"] : [0, 1]}
+                label={{ value: metric === "l2" ? "L2 Distance" : metric === "cosine" ? "Cosine Similarity" : "CKA", angle: -90, position: "insideLeft", offset: -5, style: { textAnchor: "middle" } }}
+              />
               <Tooltip />
               <Bar dataKey={metric} onClick={(data) => selectLayer(data.layer)}>
                 {layers.map((entry, index) => (
@@ -165,7 +189,7 @@ function App() {
             <div style={{ marginTop: 24, padding: 16, background: "#f8fafc", borderRadius: 8, border: "1px solid #e2e8f0" }}>
               <h3 style={{ marginTop: 0 }}>Layer {selectedLayer} — Neuron Breakdown</h3>
               <p style={{ color: "#666", fontSize: 14 }}>
-                L2: <strong>{layers[selectedLayer]?.l2}</strong> | Cosine: <strong>{layers[selectedLayer]?.cosine}</strong>
+                L2: <strong>{layers[selectedLayer]?.l2}</strong> | Cosine: <strong>{layers[selectedLayer]?.cosine}</strong> | CKA: <strong>{layers[selectedLayer]?.cka}</strong>
               </p>
 
               {neuronLoading && <p>Loading neurons...</p>}
