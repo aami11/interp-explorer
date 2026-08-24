@@ -15,21 +15,37 @@ app.add_middleware(
 )
 
 # Load models once when the server starts
-print("Loading models...")
-MODEL_A = "roneneldan/TinyStories-1M"
-MODEL_B = "roneneldan/TinyStories-3M"
+# Available models for comparison
+AVAILABLE_MODELS = [
+    "roneneldan/TinyStories-1M",
+    "roneneldan/TinyStories-3M",
+    "roneneldan/TinyStories-8M",
+    "roneneldan/TinyStories-33M",
+]
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_A)
-model_a = AutoModelForCausalLM.from_pretrained(MODEL_A)
-model_b = AutoModelForCausalLM.from_pretrained(MODEL_B)
+# Cache so we only load each model once
+model_cache = {}
+tokenizer_cache = {}
 
-model_a.eval()
-model_b.eval()
-print("Models loaded.")
+def get_model(model_name: str):
+    if model_name not in model_cache:
+        print(f"Loading {model_name}...")
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        model.eval()
+        model_cache[model_name] = model
+        print(f"Loaded {model_name}.")
+    return model_cache[model_name]
+
+def get_tokenizer(model_name: str):
+    if model_name not in tokenizer_cache:
+        tokenizer_cache[model_name] = AutoTokenizer.from_pretrained(model_name)
+    return tokenizer_cache[model_name]
 
 # Request / response models
 class AnalyzeRequest(BaseModel):
     text: str
+    model_a: str = "roneneldan/TinyStories-1M"
+    model_b: str = "roneneldan/TinyStories-3M"
 
 class LayerResult(BaseModel):
     layer: int
@@ -88,6 +104,10 @@ def read_root():
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest):
+    tokenizer = get_tokenizer(request.model_a)
+    model_a = get_model(request.model_a)
+    model_b = get_model(request.model_b)
+
     input_ids = tokenizer.encode(request.text, return_tensors="pt")
 
     acts_a = get_activations(model_a, input_ids)
@@ -115,6 +135,10 @@ def analyze(request: AnalyzeRequest):
 
 @app.post("/neurons/{layer_idx}", response_model=NeuronResponse)
 def get_neurons(layer_idx: int, request: AnalyzeRequest):
+    tokenizer = get_tokenizer(request.model_a)
+    model_a = get_model(request.model_a)
+    model_b = get_model(request.model_b)
+
     input_ids = tokenizer.encode(request.text, return_tensors="pt")
 
     acts_a = get_activations(model_a, input_ids)
@@ -135,3 +159,7 @@ def get_neurons(layer_idx: int, request: AnalyzeRequest):
     ]
 
     return NeuronResponse(layer=layer_idx, neurons=neurons)
+
+@app.get("/models")
+def list_models():
+    return {"models": AVAILABLE_MODELS}

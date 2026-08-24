@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts"
 
 function App() {
@@ -10,6 +10,16 @@ function App() {
   const [neurons, setNeurons] = useState([])
   const [neuronLoading, setNeuronLoading] = useState(false)
 
+  const [availableModels, setAvailableModels] = useState([])
+  const [modelA, setModelA] = useState("roneneldan/TinyStories-1M")
+  const [modelB, setModelB] = useState("roneneldan/TinyStories-3M")
+
+  useEffect(() => {
+    fetch("http://localhost:8000/models")
+      .then(res => res.json())
+      .then(data => setAvailableModels(data.models))
+  }, [])
+
   const analyze = async () => {
     setLoading(true)
     setSelectedLayer(null)
@@ -17,7 +27,7 @@ function App() {
     const res = await fetch("http://localhost:8000/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: inputText })
+      body: JSON.stringify({ text: inputText, model_a: modelA, model_b: modelB })
     })
     const data = await res.json()
     setLayers(data.layers)
@@ -30,7 +40,7 @@ function App() {
     const res = await fetch(`http://localhost:8000/neurons/${layerIdx}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: inputText })
+      body: JSON.stringify({ text: inputText,  model_a: modelA, model_b: modelB })
     })
     const data = await res.json()
     setNeurons(data.neurons)
@@ -64,8 +74,35 @@ function App() {
     <div style={{ maxWidth: 800, margin: "0 auto", padding: 20, fontFamily: "system-ui" }}>
       <h1 style={{ textAlign: "center" }}>Interp Explorer</h1>
       <p style={{ textAlign: "center", color: "#666", marginTop: -8 }}>
-        Compare activations between TinyStories-1M and TinyStories-3M
+        Compare internal activations between two language models
       </p>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: "block", fontSize: 13, color: "#666", marginBottom: 4 }}>Model A</label>
+          <select
+            value={modelA}
+            onChange={e => setModelA(e.target.value)}
+            style={{ width: "100%", padding: 8, fontSize: 14, borderRadius: 6, border: "1px solid #ccc" }}
+          >
+            {availableModels.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={{ display: "block", fontSize: 13, color: "#666", marginBottom: 4 }}>Model B</label>
+          <select
+            value={modelB}
+            onChange={e => setModelB(e.target.value)}
+            style={{ width: "100%", padding: 8, fontSize: 14, borderRadius: 6, border: "1px solid #ccc" }}
+          >
+            {availableModels.map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         <input
